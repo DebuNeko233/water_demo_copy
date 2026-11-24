@@ -601,7 +601,10 @@ class PythonVideoStream:
         data = None
         if self._detecting:
             assert isinstance(self._detector, WaveformDetector)
-            data = self._detector.process(frame, t)
+            try:
+                data = self._detector.process(frame, t)
+            except ValueError as exc:
+                raise InvalidFrame(str(exc)) from exc
             self._history.append({'time_s': t, 'entropy': data['entropy'],
                                   'symmetry': data['symmetry']})
             while self._history and self._history[0]['time_s'] < t - 5.0:

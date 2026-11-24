@@ -55,15 +55,15 @@ class WaveSettings:
     # Empty ranges mean no approved reference; do not report OK.
     entropy_ranges: tuple[tuple[float, float], ...] = ()
     symmetry_min: tuple[float, float, float] = (.75, .75, .75)
-    tolerance_ratio: float = .03
+    tolerance_ratio: float = .05
     min_pixels: int = 12
-    max_fill: float = .65
+    max_fill: float = .90
     grid_size: int = 8
     hue_min: int = 35
     hue_max: int = 95
-    saturation_min: int = 45
-    value_min: int = 65
-    green_margin: int = 12
+    saturation_min: int = 65
+    value_min: int = 90
+    green_margin: int = 28
     ng_hold_s: float = .5
     recover_hold_s: float = .5
 

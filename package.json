@@ -38,5 +38,5 @@
   "engines": {
     "node": ">=22"
   },
-  "description": "ZeboVision 湿法清洗检测系统：Electron + Vue + Python desktop application"
+  "description": "ZeboVision 注入机波形检测系统：Electron + Vue + Python desktop application"
 }

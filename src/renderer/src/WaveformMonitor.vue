@@ -204,6 +204,9 @@ function enableRanges(e:Event){
 }
 function useNormalSamples(){
   if(!draft.value)return
+  if(!profile.value||!samePreprocessing(draft.value.settings,profile.value.settings)){
+    message.value='波形提取参数已变更，请先保存并重新采集正常样本';return
+  }
   const last=records.value.at(-1)
   if(!last||!isDetecting.value){message.value='请先播放已确认正常的视频并开始检测';return}
   const recent=records.value.filter(x=>x.time_s>=last.time_s-5&&x.time_s<=last.time_s)
@@ -217,15 +220,22 @@ function useNormalSamples(){
   })
   message.value='正常熵值范围已生成，可微调后保存'
 }
+function samePreprocessing(a:WaveSettings,b:WaveSettings){
+  return (['grid_size','hue_min','hue_max','saturation_min','value_min','green_margin'] as const).every(k=>a[k]===b[k])
+}
 async function applyDetector(){
   if(!token.value||!draft.value||busy.value)return
   const t=currentTime.value,detect=isDetecting.value,resume=resumeModal,opened=hasSession.value
   busy.value=true
   try{
-    profile.value=await saveWaveProfile(copy(draft.value),token.value)
+    const next=copy(draft.value)
+    const changed=profile.value&&!samePreprocessing(next.settings,profile.value.settings)
+    // Entropy references from a different mask/grid definition are not comparable.
+    if(changed)next.settings.entropy_ranges=[]
+    profile.value=await saveWaveProfile(next,token.value)
     closeModal(false);d.invalidate()
     if(opened&&profile.value.layout)await d.open(source.value.kind==='file'?t:0,resume,detect)
-    message.value='检测参数已保存'
+    message.value=changed?'提取参数已保存，请重新建立正常熵值范围':'检测参数已保存'
   }catch{message.value='参数无效或保存失败，请检查取值范围'}
   finally{busy.value=false}
 }
@@ -275,8 +285,8 @@ onBeforeUnmount(()=>{off?.();window.removeEventListener('keydown',esc)})
       <div class="brand"><div class="brand-icon"><img :src="brandIconUrl" alt=""/></div><div class="brand-name">ZeboVision</div></div>
       <div class="app-title">注入机波形检测系统</div>
       <div class="header-actions">
-        <button class="btn btn-muted" @click="switchRole">{{isAdmin?'管理员':'操作员'}}</button>
-        <button v-if="isAdmin" class="btn btn-muted" :disabled="busy" @click="openSettings">设置</button>
+        <button class="role-switch" @click="switchRole" :aria-label="isAdmin?'退出管理员':'切换管理员'"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg><span>{{isAdmin?'管理员':'操作员'}}</span></button>
+        <button v-if="isAdmin" class="algorithm-gear" title="系统设置" aria-label="系统设置" :disabled="busy" @click="openSettings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
         <div class="window-controls">
           <button title="最小化" @click="windowAction('minimize')">—</button>
           <button title="最大化或还原" @click="windowAction('toggleMaximize')">□</button>
@@ -288,7 +298,7 @@ onBeforeUnmount(()=>{off?.();window.removeEventListener('keydown',esc)})
       <section class="panel video-panel">
         <div class="panel-heading"><span class="panel-title">检测画面</span><div class="heading-actions">
           <button v-if="isAdmin" class="btn btn-muted" :disabled="busy" @click="openCalibration">区域标定</button>
-          <button class="btn btn-primary" :disabled="busy||status==='connecting'" @click="openVideo()">{{source.kind==='file'?'打开视频':'连接摄像头'}}</button>
+          <button class="btn btn-muted video-open-icon" :title="source.kind==='file'?'打开视频':'连接摄像头'" :aria-label="source.kind==='file'?'打开视频':'连接摄像头'" :disabled="busy||status==='connecting'" @click="openVideo()"><svg v-if="source.kind==='file'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 8V6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v3"/><path d="M3 9h19l-3 11H5Z"/></svg><svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.7 9a7 7 0 0 1 12.1-2L20 12M4 12l2.2 5a7 7 0 0 0 12.1-2"/></svg></button>
         </div></div>
         <div class="video-stage">
           <img v-if="renderedFrame" class="video-element" :src="renderedFrame" alt="波形检测画面"/>
@@ -353,9 +363,9 @@ onBeforeUnmount(()=>{off?.();window.removeEventListener('keydown',esc)})
       <section class="calibration-modal wave-calibration" role="dialog" aria-modal="true" aria-label="六区域标定">
         <div class="modal-header"><h2>六区域标定</h2><button class="modal-close" :disabled="busy" @click="closeModal()">×</button></div>
         <div class="wave-calibration-body">
-          <div v-if="snapshot&&layout" class="wave-calibration-frame" :style="{aspectRatio:layout.width+'/'+layout.height}">
+          <div v-if="snapshot&&layout" class="wave-calibration-frame" :style="{aspectRatio:layout.width+'/'+layout.height,width:'min(100%, calc((100vh - 280px) * '+(layout.width/layout.height)+'))'}">
             <img :src="snapshot" alt="原始标定画面"/>
-            <WaveformCalibrationOverlay v-model="layout" :readonly="busy"/>
+            <WaveformCalibrationOverlay :model-value="layout" :readonly="busy" @update:model-value="layout=$event"/>
           </div>
           <div v-else class="wave-empty">尚未获取标定画面</div>
         </div>
@@ -421,7 +431,7 @@ onBeforeUnmount(()=>{off?.();window.removeEventListener('keydown',esc)})
 .wave-message{white-space:normal;color:#b7d6e9;overflow-wrap:anywhere}
 .wave-calibration{width:min(1050px,95vw)}
 .wave-calibration-body{display:flex;align-items:center;justify-content:center;min-height:120px;padding:10px 16px;background:#040c13;overflow:auto}
-.wave-calibration-frame{position:relative;width:min(100%,calc((100vh - 240px)*1.4));max-height:calc(100vh - 240px);flex:none}
+.wave-calibration-frame{position:relative;flex:none}
 .wave-calibration-frame img{display:block;width:100%;height:100%;object-fit:fill}
 .wave-empty{padding:40px;color:#9ab5c9}
 .wave-calibration-tools,.wave-settings-tabs{padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
