@@ -1,15 +1,27 @@
 # 注入机波形视频检测改造
 
-第一阶段新增独立的六区几何、拖拽标定组件、OpenCV 检测核心及测试。现有水流监测入口尚未切换；本阶段不改变原有视频、账号、IPC 或打包契约。
+改造分支以 WaveformMonitor.vue 作为 Electron 渲染入口，复用原视频流、解码、播放背压、摄像头、管理员登录和安全 IPC。旧水流源码暂留用于回归和后续清理，不再是默认入口。
 
-- 1/2：外侧；3/4：顶部；5/6：中间。坐标为原视频整数像素，半开区间。
-- 六框由公共中心、三条水平边界及三个半宽生成；拖拽共享边界或镜像控制点自动联动。
-- 使用 HSV 与绿色优势提取绿色轨迹，排除红线、白色反光和孤立点。
-- 每区以固定 8×8 网格统计前景分布，归一化 Shannon 熵为 0–1；不以熵越高必然越坏为假设。
-- 三组水平镜像进行双向距离变换匹配，默认容差为 ROI 短边 3%，默认最低相似度 0.75。不进行逐帧自动配准。
-- 正常参考需经现场确认，分别设置六区熵的上下界。没有参考、无有效轨迹、遮挡或过多前景时返回 UNKNOWN；0.5 秒默认持续判定与恢复时间仅为待验证的调试参数。
-- 单独检测算法输入原始 BGR 帧及单调视频时间，输出六个熵值、三组对称性、异常区域和持续时间；可绘制结果。该结果仅描述显示波形，不证明注入剂量合格。
+## 标定
 
-测试：`node --test tests/waveform-layout.test.mjs`；`uv run --project backend pytest backend/tests/test_waveform_detection.py`。
+管理员在设置中选择本地视频、RTSP 或 USB，再打开区域标定。框内拖动整组；拖动控制点移动公共边界，左右镜像联动。1/2 外侧，3/4 顶部，5/6 中间。坐标使用原视频整数像素，分辨率改变需要重新标定。保存几何后清空旧熵值范围。
 
-尚待集成：将原标定弹窗替换为新组件，后端持久化管理员标定及参数，接入视频流、趋势图、导出和配置备份，删除旧水流业务及测试后运行完整类型检查与 Windows 构建。
+## 检测
+
+- HSV 与绿色优势提取绿色轨迹，排除红线、白色反光和孤立点。
+- 各区固定网格统计前景分布，归一化 Shannon 熵 0–1；上下限独立。
+- 三组水平镜像双向距离匹配，默认容差为 ROI 短边 3%，默认最低相似度 0.75。不做逐帧自动配准。
+- 正常范围由管理员通过已确认的正常视频建立：播放检测至少 20 个有效记录且跨度至少 1 秒，设置 → 检测参数 → 使用最近正常样本；范围为近 5 秒各区最小/最大值外扩 0.04，管理员可修改。这是初始标定建议，不是经过验证的工艺阈值。
+- 未设置参考或轨迹无效时输出 UNKNOWN；0.5 秒持续异常与恢复时间可配置。红框标识异常候选，灰框表示尚未确认状态，黄框表示无有效波形。只监测显示波形，不能作为实际注入剂量验收或自动停机联锁。
+- 每帧检测使用原始 BGR 图像，JPEG 只用于结果展示；本地文件批处理返回每帧指标。实时预览只取最新包，CSV 是所接收的实时记录而非所有摄像头帧。
+- 配置保存在 data/waveform/profile.json；ZIP 含单独的版本化波形配置，不含密码、RTSP 地址或原视频。旧水流 ZIP 不兼容。
+
+## API
+
+GET /api/waveform/profile；POST /api/waveform/profile/save、/api/waveform/archive/import、/api/waveform/archive/export 需要管理员令牌。POST /api/waveform/open 只使用后端批准的视频源与配置；沿用 /api/video/next、/seek、/detection/start、/detection/stop。结果包括 entropy[6]、symmetry[3]、bad_regions、bad_pairs、invalid_regions、pixel_counts、abnormal_run_s 和 history。
+
+## 验证
+
+`node --test tests/waveform-layout.test.mjs`；`uv run --project backend pytest backend/tests/test_waveform_detection.py backend/tests/test_waveform_video.py`；`pnpm typecheck`；`pnpm dev`。
+
+尚需实机测试：现场屏幕曝光/闪烁、摄像头畸变、正常范围与误报；旧水流代码和静态测试迁移、Windows 打包回归、实时长期运行。
