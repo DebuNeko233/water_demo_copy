@@ -202,7 +202,8 @@ def render_waveform_frame(frame, layout, result):
         bad.update(map(int, pair.split("-")))
     invalid = set(result["invalid_regions"])
     for n, (x0, y0, x1, y1) in layout.rectangles().items():
-        color = (40, 50, 230) if n in bad else (0, 190, 255) if n in invalid else (70, 200, 80)
+        color = ((40, 50, 230) if n in bad else (0, 190, 255) if n in invalid
+                 else (70, 200, 80) if result['status'] == 'OK' else (170, 170, 170))
         cv2.rectangle(image, (x0, y0), (x1-1, y1-1), color, 1)
         cv2.putText(image, str(n), (x0+3, y0+15), cv2.FONT_HERSHEY_SIMPLEX, .45, color, 1, cv2.LINE_AA)
     return image

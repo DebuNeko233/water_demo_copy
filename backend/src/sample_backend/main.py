@@ -10,6 +10,7 @@ from loguru import logger
 from .api.control import router as control_router
 from .api.detection import router as detection_router
 from .api.video import router as video_router
+from .api.waveform import router as waveform_router
 from .api.users import router as users_router
 from .api.stations import router as stations_router
 from .api.routes import router as api_router
@@ -22,6 +23,7 @@ from .services.video_stream import PythonVideoStream
 from .services.user_access import LocalUserAccess
 from .services.station_position import StageProfileStore
 from .services.video_source import VideoSourceStore
+from .services.waveform_profile import WaveProfileStore
 from .services.event_hub import EventHub
 
 
@@ -34,6 +36,7 @@ async def lifespan(app: FastAPI):
     app.state.water_detector = WaterDetectionSession()
     app.state.station_profile = StageProfileStore()
     app.state.video_source = VideoSourceStore()
+    app.state.waveform_profile = WaveProfileStore()
     app.state.video_stream = PythonVideoStream(app.state.station_profile)
     app.state.user_access = LocalUserAccess()
     logger.info("FastAPI is starting")
@@ -64,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(detection_router)
     app.include_router(video_router)
+    app.include_router(waveform_router)
     app.include_router(users_router)
     app.include_router(stations_router)
     app.include_router(websocket_router)
