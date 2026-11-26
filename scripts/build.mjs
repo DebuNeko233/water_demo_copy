@@ -16,10 +16,10 @@ import { inspectManagedRuntime, ensureRuntimeDll } from './lib/runtime-copy.mjs'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const backend = path.join(root, 'backend')
 const buildRoot = path.join(root, 'build')
-// staging 是中间产物；验证完成才改名为 electron-builder 使用的 backend。
-const staging = path.join(buildRoot, 'backend-staging')
+// 直接组装 electron-builder 使用的资源目录。Windows 可能在 Python 退出后
+// 短暂锁定 DLL，避免再对整个运行时目录执行 rename。
 const finalBackend = path.join(buildRoot, 'backend')
-const runtime = path.join(staging, 'runtime')
+const runtime = path.join(finalBackend, 'runtime')
 const pythonVersion = fs.readFileSync(path.join(backend, '.python-version'), 'utf8').trim()
 // uv 可以来自系统 PATH，也可以来自本地自动引导的 .tools/ 缓存。
 let uv
@@ -97,9 +97,6 @@ if (process.platform !== 'win32') {
   throw new Error('The initial release builder targets Windows x64. Build on Windows.')
 }
 
-fs.mkdirSync(buildRoot, { recursive: true })
-fs.rmSync(staging, { recursive: true, force: true })
-fs.mkdirSync(staging, { recursive: true })
 // 正式运行时使用独立副本，避免依赖和开发机 uv 缓存之间的硬链接。
 const env = { ...process.env, UV_LINK_MODE: 'copy' }
 
@@ -110,9 +107,14 @@ try {
   // Resolve using pyproject.toml; uv may create an ignored, local uv.lock.
   // Keep the project .venv separate from the self-contained release runtime.
   run('uv', ['sync', '--project', backend])
+  // 仅清理生成目录；短暂的 Windows 文件占用由 Node 的有限重试处理。
+  // 删除失败立即中止，绝不将新运行时覆盖到旧的半完整目录。
+  fs.mkdirSync(buildRoot, { recursive: true })
+  fs.rmSync(finalBackend, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
+  fs.mkdirSync(finalBackend, { recursive: true })
   const { python, source } = preparePythonRuntime()
 
-  const requirements = path.join(staging, 'requirements.txt')
+  const requirements = path.join(finalBackend, 'requirements.txt')
   // 导出生产依赖但不导出 pytest 等开发依赖；业务包稍后单独安装。
   run('uv', [
     'export', '--project', backend, '--no-dev',
@@ -128,18 +130,16 @@ try {
   run(python, ['-I', '-c', 'import fastapi, uvicorn, loguru, sample_backend; print("Backend import passed")'])
 
   // The packaged manifest points only to the self-contained release copy.
-  const relativePython = path.relative(staging, python).replaceAll('\\', '/')
-  fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify({
+  const relativePython = path.relative(finalBackend, python).replaceAll('\\', '/')
+  fs.writeFileSync(path.join(finalBackend, 'manifest.json'), JSON.stringify({
     python: relativePython,
     python_version: pythonVersion,
-    python_dll: path.relative(staging, path.join(runtime, source.dllRelative)).replaceAll('\\', '/'),
+    python_dll: path.relative(finalBackend, path.join(runtime, source.dllRelative)).replaceAll('\\', '/'),
     backend_package: 'sample_backend',
   }, null, 2) + '\n')
 
-  // Python 环境准备好后再整体转为正式资源目录。
-  fs.rmSync(finalBackend, { recursive: true, force: true })
-  fs.renameSync(staging, finalBackend)
-  ensureRuntimeDll(source, path.join(finalBackend, 'runtime'), 'final backend')
+  // 不移动已执行过的 Python 目录，避免 Windows EPERM。
+  ensureRuntimeDll(source, runtime, 'final backend')
   // Before Electron copies resources, validate all interpreter components,
   // native dependencies and real MP4/AVI decoding in an isolated process.
   run(process.execPath, ['scripts/verify-runtime.mjs', finalBackend])
@@ -151,10 +151,10 @@ try {
   run(packageManager, [...prefix, 'electron-vite', 'build'])
   // Never allow previous dist contents to make an incomplete new build look
   // complete. The only supported release is the entire win-unpacked folder.
-  fs.rmSync(path.join(root, 'dist', 'win-unpacked'), { recursive: true, force: true })
+  fs.rmSync(path.join(root, 'dist', 'win-unpacked'), { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
   run(packageManager, [...prefix, 'electron-builder', '--win', '--dir', '--x64'])
   // Verify the actual files copied into the published Windows folder, not
-  // only the intermediate build/backend staging copy.
+  // only the prepared build/backend resource directory.
   run(process.execPath, ['scripts/verify-runtime.mjs',
     path.join(root, 'dist', 'win-unpacked', 'resources', 'backend')])
   console.log('Portable Windows directory: dist/win-unpacked')

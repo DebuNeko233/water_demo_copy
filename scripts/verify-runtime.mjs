@@ -1,6 +1,6 @@
 /** Validate a redistributable Windows CPython runtime, not merely python.exe.
  *
- * Called once on the staging copy and again against the actual packaged
+ * Called once on the prepared build copy and again against the actual packaged
  * Electron resources. Uses isolated Python, a restricted PATH, native-module
  * imports, and real OpenCV AVI/MP4 video read/write on the copied interpreter.
  */
