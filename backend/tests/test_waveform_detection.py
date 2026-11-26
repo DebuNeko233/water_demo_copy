@@ -81,3 +81,30 @@ def test_state_and_missing_reference():
     assert d.process(f,1.6)["status"] == "NG"
     assert d.process(f,1.85)["status"] == "OK"
     assert d.process(np.zeros_like(f),2)["status"] == "UNKNOWN"
+
+
+def test_region_fill_is_fixed_and_does_not_modify_analysis_frame():
+    from sample_backend.services.waveform_detection import (
+        render_waveform_frame, REGION_COLORS_BGR, REGION_FILL_OPACITY,
+    )
+    l = layout()
+    raw = np.full((l.height, l.width, 3), (12, 40, 80), np.uint8)
+    before = raw.copy()
+    normal = {'status': 'OK', 'bad_regions': [], 'bad_pairs': [], 'invalid_regions': []}
+    abnormal = {'status': 'NG', 'bad_regions': [1], 'bad_pairs': ['3-4'], 'invalid_regions': [6]}
+    a = render_waveform_frame(raw, l, normal)
+    b = render_waveform_frame(raw, l, abnormal)
+    interior = []
+    for n, (x0, y0, x1, y1) in l.rectangles().items():
+        y, x = y1-4, (x0+x1)//2
+        expected = np.rint((1-REGION_FILL_OPACITY)*before[y,x] +
+                           REGION_FILL_OPACITY*np.array(REGION_COLORS_BGR[n-1]))
+        np.testing.assert_allclose(a[y,x], expected, atol=1)
+        np.testing.assert_array_equal(a[y,x], b[y,x])
+        interior.append(tuple(a[y,x]))
+    assert len(set(interior)) == 6
+    x0,y0,_,_ = l.rectangles()[1]
+    assert tuple(a[y0,x0]) == (70,200,80)
+    assert tuple(b[y0,x0]) == (40,50,230)
+    np.testing.assert_array_equal(raw, before)
+    np.testing.assert_array_equal(a[0,0], before[0,0])

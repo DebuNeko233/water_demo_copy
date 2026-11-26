@@ -195,6 +195,15 @@ class WaveformDetector:
                 "abnormal_run_s": 0.0 if self.bad_since is None else time_s - self.bad_since}
 
 
+# OpenCV BGR equivalents of the fixed frontend region colors.
+# Fill is only a visual identifier; existing borders still indicate status.
+REGION_COLORS_BGR = (
+    (255, 202, 72), (181, 214, 101), (111, 196, 247),
+    (166, 146, 236), (243, 149, 173), (103, 154, 241),
+)
+REGION_FILL_OPACITY = 0.16
+
+
 def render_waveform_frame(frame, layout, result):
     image = frame.copy()
     bad = set(result["bad_regions"])
@@ -202,6 +211,11 @@ def render_waveform_frame(frame, layout, result):
         bad.update(map(int, pair.split("-")))
     invalid = set(result["invalid_regions"])
     for n, (x0, y0, x1, y1) in layout.rectangles().items():
+        # Blend only the copied display pixels, never the detector's input.
+        roi = image[y0:y1, x0:x1]
+        tint = np.empty_like(roi)
+        tint[:] = REGION_COLORS_BGR[n-1]
+        cv2.addWeighted(roi, 1-REGION_FILL_OPACITY, tint, REGION_FILL_OPACITY, 0, dst=roi)
         color = ((40, 50, 230) if n in bad else (0, 190, 255) if n in invalid
                  else (70, 200, 80) if result['status'] == 'OK' else (170, 170, 170))
         cv2.rectangle(image, (x0, y0), (x1-1, y1-1), color, 1)

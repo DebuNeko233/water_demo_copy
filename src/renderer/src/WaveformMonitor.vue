@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { REGION_COLORS as colors } from './utils/waveform-colors.mjs'
 import AdminAccessDialog from './components/AdminAccessDialog.vue'
 import WaveformCalibrationOverlay from './components/WaveformCalibrationOverlay.vue'
 import { useWaveformVideoStream } from './composables/useWaveformVideoStream'
@@ -43,7 +44,6 @@ const reason=computed(()=>{
   if(r.bad_pairs.length) parts.push('对称异常：'+r.bad_pairs.join('、'))
   return parts.join('；') || (r.status==='WARMUP'?'正在确认连续状态':r.status==='OK'?'波形正常':r.status==='NG'?'等待恢复':'')
 })
-const colors=['#48caff','#65d6b5','#f7c46f','#ec92a6','#ad95f3','#f19a67']
 const pairs=['1–2','3–4','5–6']
 const timeLabel=(v:number)=>v.toFixed(1)+' s'
 const fmt=(v:number|null|undefined,digits=3)=>v==null?'--':v.toFixed(digits)

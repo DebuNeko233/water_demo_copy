@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { REGION_COLORS as palette, REGION_FILL_OPACITY } from '../utils/waveform-colors.mjs'
 import { dragLayout, rectangles, type WaveHandle, type WaveLayout } from '../utils/waveform-layout.mjs'
 
 const props = defineProps<{ modelValue: WaveLayout; readonly?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: WaveLayout] }>()
 const svg = ref<SVGSVGElement | null>(null)
 const boxes = computed(() => rectangles(props.modelValue))
-const palette = ['#53a5ff','#53a5ff','#f2bf52','#f2bf52','#b48aff','#b48aff']
 const handles = computed(() => {
   const l = props.modelValue
   const c=l.center_x, o=l.outer_half_width, i=l.inner_half_width, u=l.top_half_width
@@ -48,7 +48,7 @@ function end(e:PointerEvent) {
        @pointermove="move" @pointerup="end" @pointercancel="end" @lostpointercapture="end">
     <g v-for="r in boxes" :key="r.id">
       <rect :x="r.x" :y="r.y" :width="r.width" :height="r.height" :stroke="palette[r.id-1]"
-            fill="transparent" stroke-width="1.6" vector-effect="non-scaling-stroke"
+            :fill="palette[r.id-1]" :fill-opacity="REGION_FILL_OPACITY" stroke-width="1.6" vector-effect="non-scaling-stroke"
             class="wave-region" @pointerdown="begin($event,'move')" />
       <text :x="r.x+r.width/2" :y="r.y+r.height/2" :fill="palette[r.id-1]"
             :font-size="Math.max(12, modelValue.height*.035)" text-anchor="middle"

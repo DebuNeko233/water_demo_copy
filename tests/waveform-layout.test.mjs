@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { REGION_COLORS, REGION_FILL_OPACITY } from '../src/renderer/src/utils/waveform-colors.mjs'
 import { defaultLayout, rectangles, validateLayout, dragLayout } from '../src/renderer/src/utils/waveform-layout.mjs'
 
 test('six linked rectangles share edges and mirror',()=>{
@@ -25,4 +27,15 @@ test('drag handles clamp and mirror without overlap',()=>{
   const n=dragLayout(start,'inner-left',-20,0)
   assert.equal(n.inner_half_width,start.inner_half_width+20)
   assert.equal(rectangles(n)[0].width,rectangles(start)[0].width-20)
+})
+
+
+test('six region colors are distinct and translucent, independent of verdict',()=>{
+  assert.equal(REGION_COLORS.length,6)
+  assert.equal(new Set(REGION_COLORS).size,6)
+  assert.ok(REGION_FILL_OPACITY > 0 && REGION_FILL_OPACITY <= .25)
+  const overlay=readFileSync(new URL('../src/renderer/src/components/WaveformCalibrationOverlay.vue',import.meta.url),'utf8')
+  const monitor=readFileSync(new URL('../src/renderer/src/WaveformMonitor.vue',import.meta.url),'utf8')
+  assert.match(overlay, /:fill="palette\[r\.id-1\]" :fill-opacity="REGION_FILL_OPACITY"/)
+  assert.match(monitor, /import \{ REGION_COLORS as colors \}/)
 })
