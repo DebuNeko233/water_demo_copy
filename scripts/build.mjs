@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveProcessCommand } from './lib/process-command.mjs'
 import { ensureUv } from './uv-bootstrap.mjs'
 import { ensureElectron } from './ensure-electron.mjs'
-import { inspectManagedRuntime, ensureRuntimeDll } from './lib/runtime-copy.mjs'
+import { inspectManagedRuntime, ensureRuntimeDll, basePythonEnvironment } from './lib/runtime-copy.mjs'
 
 // 以脚本自身定位仓库根目录，不受调用它的终端当前目录影响。
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -47,9 +47,9 @@ function run(command, args, options = {}) {
 function findManagedPython() {
   const result = spawnSync(
     uv,
-    // 只查 uv 管理的 Python 缓存，不查项目 .venv，也不在查找时下载。
-    ['python', 'find', '--managed-python', '--no-project', '--no-python-downloads', pythonVersion],
-    { cwd: root, encoding: 'utf8', shell: false },
+    // --no-project 并不排除已激活或当前目录的虚拟环境；必须同时使用 --system。
+    ['python', 'find', '--system', '--managed-python', '--no-project', '--no-python-downloads', pythonVersion],
+    { cwd: root, env: basePythonEnvironment(), encoding: 'utf8', shell: false },
   )
   if (result.error) throw new Error('uv is required: ' + result.error.message)
   if (result.status !== 0) return null
@@ -75,6 +75,7 @@ function preparePythonRuntime() {
   }
   if (!sourcePython) throw new Error('uv could not find Python ' + pythonVersion)
 
+  console.log('[build] uv selected Python:', sourcePython)
   const source = inspectManagedRuntime(sourcePython, pythonVersion)
   console.log('[build] Reusing local Python:', source.root)
   console.log('[build] Actual CPython DLL:', source.dll)

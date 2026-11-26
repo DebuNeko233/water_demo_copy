@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { containedRelative, ensureRuntimeDll } from '../lib/runtime-copy.mjs'
+import { containedRelative, ensureRuntimeDll, basePythonEnvironment } from '../lib/runtime-copy.mjs'
 
 test('restore a missing or truncated DLL in its actual relative directory', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wave-runtime-'))
@@ -27,4 +27,14 @@ test('restore a missing or truncated DLL in its actual relative directory', () =
   } finally {
     fs.rmSync(tmp,{recursive:true,force:true})
   }
+})
+
+test('base Python discovery ignores activated environment variables but preserves uv cache configuration', () => {
+  const input = {Virtual_Env:'dev', PYTHONHOME:'other', PYTHONPATH:'modules',
+    UV_PROJECT_ENVIRONMENT:'venv', CONDA_PREFIX:'conda', CONDA_DEFAULT_ENV:'name',
+    __PYVENV_LAUNCHER__:'launcher', PATH:'original-path', UV_PYTHON_INSTALL_DIR:'custom-cache',
+    UV_CACHE_DIR:'wheel-cache'}
+  assert.deepEqual(basePythonEnvironment(input), {PATH:'original-path',
+    UV_PYTHON_INSTALL_DIR:'custom-cache', UV_CACHE_DIR:'wheel-cache'})
+  assert.equal(input.Virtual_Env, 'dev')
 })

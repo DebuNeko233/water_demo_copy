@@ -22,3 +22,8 @@ test('clean with bounded retry and validate before Electron packaging', () => {
   assert.ok(cleanup >= 0 && cleanup < prepare && prepare < manifest && manifest < validation && validation < packageStep)
   assert.match(build, /path\.join\(root, 'dist', 'win-unpacked', 'resources', 'backend'\)/)
 })
+
+test('offline managed Python lookup explicitly excludes active virtual environments', () => {
+  assert.match(build, /\['python', 'find', '--system', '--managed-python', '--no-project', '--no-python-downloads', pythonVersion\]/)
+  assert.match(build, /env: basePythonEnvironment\(\)/)
+})

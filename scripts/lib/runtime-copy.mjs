@@ -26,10 +26,16 @@ export function containedRelative(root, filename) {
   return relative
 }
 
+// Only isolate interpreter discovery/probing; preserve uv cache/install-directory settings.
+export function basePythonEnvironment(environment = process.env) {
+  const excluded = new Set(['PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV',
+    'UV_PROJECT_ENVIRONMENT', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV', '__PYVENV_LAUNCHER__'])
+  return Object.fromEntries(Object.entries(environment).filter(([key]) => !excluded.has(key.toUpperCase())))
+}
+
 export function inspectManagedRuntime(executable, requested) {
   const expected = parseRuntimeVersion(requested)
-  const env = { ...process.env }
-  for (const key of ['PYTHONHOME','PYTHONPATH','VIRTUAL_ENV','UV_PROJECT_ENVIRONMENT']) delete env[key]
+  const env = basePythonEnvironment()
   const code = loadedDllPython + `
 import json, pathlib
 print(json.dumps({
@@ -51,7 +57,11 @@ print(json.dumps({
     throw new Error('Managed Python version mismatch: requested ' + requested + ', actual ' + info.version)
   }
   const root = fs.realpathSync(info.root)
-  if (fs.realpathSync(info.prefix) !== root) throw new Error('uv returned a virtual environment, not base Python')
+  const prefix = fs.realpathSync(info.prefix)
+  if (path.relative(root, prefix) !== '') {
+    throw new Error('uv returned a virtual environment, not base Python' +
+      '\nInterpreter: ' + executable + '\nsys.prefix: ' + prefix + '\nsys.base_prefix: ' + root)
+  }
   const dll = fs.realpathSync(info.dll)
   if (path.basename(dll).toLowerCase() !== expected.dll) {
     throw new Error('Unexpected loaded CPython DLL: ' + dll)
