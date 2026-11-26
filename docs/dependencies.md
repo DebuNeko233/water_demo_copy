@@ -68,3 +68,5 @@ pnpm build
 ## uv 如何安装？
 
 开发机无需预装 uv：由 `scripts/uv-bootstrap.mjs` 先执行 `uv self version`，缺失时自动下载官方 uv 二进制到被 Git 忽略的 `.tools/uv/`。详情见 [uv 自动引导](uv-bootstrap.md)。目标电脑只运行内置 Python，不依赖 uv。
+
+Windows 绿色包的 `scripts/verify-runtime.mjs` 根据构建清单的 `python_version` 检查对应主次版本的 CPython DLL（例如 3.13 → `python313.dll`），并以隔离模式核对实际解释器版本；指定补丁版本时也核对补丁版本。仍需通过原生扩展导入和 AVI/MP4 解码检查，不可通过复制或重命名其他版本 DLL 绕过。
