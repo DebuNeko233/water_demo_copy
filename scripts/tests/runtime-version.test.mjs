@@ -27,6 +27,7 @@ test('runtime validator uses the manifest DLL and checks the real interpreter ve
   assert.match(source, /path\.join\(runtime, version\.dll\)/)
   assert.match(source, /actual = tuple\(sys\.version_info\[:len\(expected\)\]\)/)
   assert.match(source, /assert actual == expected/)
-  assert.match(source, /\['-I', '-c', verification, version\.requested\]/)
+  assert.match(source, /\['-I', '-c', verification, version\.requested, dll\]/)
+  assert.match(source, /loaded == expected_dll and loaded\.is_relative_to\(base\)/)
   assert.doesNotMatch(source, /['"]python312\.dll['"]/)
 })

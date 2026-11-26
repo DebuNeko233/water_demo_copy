@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveProcessCommand } from './lib/process-command.mjs'
 import { ensureUv } from './uv-bootstrap.mjs'
 import { ensureElectron } from './ensure-electron.mjs'
+import { inspectManagedRuntime, ensureRuntimeDll } from './lib/runtime-copy.mjs'
 
 // 以脚本自身定位仓库根目录，不受调用它的终端当前目录影响。
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -74,9 +75,11 @@ function preparePythonRuntime() {
   }
   if (!sourcePython) throw new Error('uv could not find Python ' + pythonVersion)
 
-  console.log('[build] Reusing local Python:', sourcePython)
-  // 拷贝标准库、DLL 与解释器完整目录，不能只复制 python.exe。
-  fs.cpSync(path.dirname(sourcePython), runtime, {
+  const source = inspectManagedRuntime(sourcePython, pythonVersion)
+  console.log('[build] Reusing local Python:', source.root)
+  console.log('[build] Actual CPython DLL:', source.dll)
+  // 从解释器真实的 base_prefix 复制，而不是从可能为启动器的路径猜测。
+  fs.cpSync(source.root, runtime, {
     recursive: true,
     dereference: true,
     force: true,
@@ -86,7 +89,8 @@ function preparePythonRuntime() {
   if (!fs.existsSync(packagedPython)) {
     throw new Error('The copied Python runtime has no python.exe')
   }
-  return packagedPython
+  ensureRuntimeDll(source, runtime, 'initial copy')
+  return { python: packagedPython, source }
 }
 
 if (process.platform !== 'win32') {
@@ -106,7 +110,7 @@ try {
   // Resolve using pyproject.toml; uv may create an ignored, local uv.lock.
   // Keep the project .venv separate from the self-contained release runtime.
   run('uv', ['sync', '--project', backend])
-  const python = preparePythonRuntime()
+  const { python, source } = preparePythonRuntime()
 
   const requirements = path.join(staging, 'requirements.txt')
   // 导出生产依赖但不导出 pytest 等开发依赖；业务包稍后单独安装。
@@ -119,6 +123,7 @@ try {
   run('uv', ['pip', 'sync', '--python', python, '--system', '--break-system-packages', requirements], { env })
   // 第三方依赖已同步，这一步只安装自己的 sample_backend 包。
   run('uv', ['pip', 'install', '--python', python, '--system', '--break-system-packages', '--no-deps', backend], { env })
+  ensureRuntimeDll(source, runtime, 'after dependency install')
   // 隔离模式验证发行环境可以独立导入，避免开发机路径掩盖缺包问题。
   run(python, ['-I', '-c', 'import fastapi, uvicorn, loguru, sample_backend; print("Backend import passed")'])
 
@@ -127,12 +132,14 @@ try {
   fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify({
     python: relativePython,
     python_version: pythonVersion,
+    python_dll: path.relative(staging, path.join(runtime, source.dllRelative)).replaceAll('\\', '/'),
     backend_package: 'sample_backend',
   }, null, 2) + '\n')
 
   // Python 环境准备好后再整体转为正式资源目录。
   fs.rmSync(finalBackend, { recursive: true, force: true })
   fs.renameSync(staging, finalBackend)
+  ensureRuntimeDll(source, path.join(finalBackend, 'runtime'), 'final backend')
   // Before Electron copies resources, validate all interpreter components,
   // native dependencies and real MP4/AVI decoding in an isolated process.
   run(process.execPath, ['scripts/verify-runtime.mjs', finalBackend])
