@@ -7,8 +7,14 @@ import { defaultLayout, rectangles, validateLayout, dragLayout } from '../src/re
 test('six linked rectangles share edges and mirror',()=>{
   const l=defaultLayout(1920,1080)
   const r=rectangles(l)
-  assert.equal(r[0].x+r[0].width,r[4].x)
-  assert.equal(r[5].x+r[5].width,r[1].x)
+  assert.equal(r[0].x+r[0].width,r[2].x)
+  assert.equal(r[3].x+r[3].width,r[1].x)
+  assert.equal(r[2].y,l.split_y)
+  assert.equal(r[3].y,l.split_y)
+  assert.equal(r[4].y,l.top_y)
+  assert.equal(r[5].y,l.top_y)
+  assert.equal(r[4].y+r[4].height,l.split_y)
+  assert.equal(r[5].y+r[5].height,l.split_y)
   for(const [a,b] of [[0,1],[2,3],[4,5]]){
     assert.equal(r[a].x+r[b].x+r[b].width,2*l.center_x)
     assert.equal(r[a].width,r[b].width)
@@ -27,6 +33,8 @@ test('drag handles clamp and mirror without overlap',()=>{
   const n=dragLayout(start,'inner-left',-20,0)
   assert.equal(n.inner_half_width,start.inner_half_width+20)
   assert.equal(rectangles(n)[0].width,rectangles(start)[0].width-20)
+  assert.equal(rectangles(n)[2].width,rectangles(start)[2].width+20)
+  assert.deepEqual(rectangles(n).slice(4),rectangles(start).slice(4))
 })
 
 

@@ -24,8 +24,12 @@ def frame():
 
 def test_layout_shared_edges_and_reflection():
     r = layout().rectangles()
-    assert r[1][2] == r[5][0]
-    assert r[6][2] == r[2][0]
+    assert r[1][2] == r[3][0]
+    assert r[4][2] == r[2][0]
+    assert r[3] == (65, 60, 120, 170)
+    assert r[4] == (120, 60, 175, 170)
+    assert r[5] == (65, 10, 120, 60)
+    assert r[6] == (120, 10, 175, 60)
     for a,b in ((1,2),(3,4),(5,6)):
         assert r[a][0]+r[b][2] == 240
         assert r[a][2]+r[b][0] == 240
@@ -68,13 +72,13 @@ def test_state_and_missing_reference():
     assert d.process(f,.25)["status"] == "WARMUP"
     assert d.process(f,.5)["status"] == "OK"
     changed=f.copy()
-    x0,y0,x1,y1=layout().rectangles()[6]
+    x0,y0,x1,y1=layout().rectangles()[4]
     changed[y0:y1,x0:x1]=0
     cv2.line(changed,(x0+4,y1-5),(x1-5,y0+4),(0,255,0),2)
     # Use a horizontal line to create an obviously different right-side trace.
     changed[y0:y1,x0:x1]=0
     cv2.line(changed,(x0+4,y0+5),(x1-5,y0+5),(0,255,0),2)
-    assert "5-6" in d.process(changed,.6)["bad_pairs"]
+    assert d.process(changed,.6)["bad_pairs"] == ["3-4"]
     assert d.process(changed,.85)["status"] == "WARMUP"
     assert d.process(changed,1.1)["status"] == "NG"
     assert d.process(f,1.35)["status"] == "NG"

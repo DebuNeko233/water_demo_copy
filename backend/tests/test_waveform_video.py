@@ -10,7 +10,7 @@ from dataclasses import asdict
 def test_waveform_video_and_persistence(monkeypatch, tmp_path):
     monkeypatch.setenv('APP_DATA_DIR', str(tmp_path/'data'))
     layout = WaveLayout(240,180,120,10,60,170,100,55,55)
-    profile = {'version':1,'layout':asdict(layout),'settings':{'entropy_ranges':[[0,1]]*6}}
+    profile = {'version':2,'layout':asdict(layout),'settings':{'entropy_ranges':[[0,1]]*6}}
     path = tmp_path/'wave.mp4'
     writer = cv2.VideoWriter(str(path),cv2.VideoWriter_fourcc(*'mp4v'),20,(240,180))
     assert writer.isOpened()

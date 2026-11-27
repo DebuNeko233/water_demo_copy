@@ -16,7 +16,7 @@ export interface WaveSettings {
   recover_hold_s: number
 }
 export interface WaveProfile {
-  version: 1
+  version: 2
   layout: WaveLayout | null
   settings: WaveSettings
 }

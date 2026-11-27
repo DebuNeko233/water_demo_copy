@@ -45,8 +45,8 @@ class WaveLayout:
         # Half-open bounds: adjacent ROIs share a boundary, never pixels.
         return {
             1: (c-o, s, c-i, b), 2: (c+i, s, c+o, b),
-            3: (c-u, t, c, s), 4: (c, t, c+u, s),
-            5: (c-i, s, c, b), 6: (c, s, c+i, b),
+            3: (c-i, s, c, b), 4: (c, s, c+i, b),
+            5: (c-u, t, c, s), 6: (c, t, c+u, s),
         }
 
 

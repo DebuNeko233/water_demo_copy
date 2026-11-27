@@ -375,7 +375,7 @@ onBeforeUnmount(()=>{off?.();window.removeEventListener('keydown',esc)})
           <button class="btn btn-muted" :disabled="busy" @click="getSnapshot">刷新画面</button>
         </div>
         <div v-if="message" class="wave-modal-message">{{message}}</div>
-        <div class="modal-footer"><span>1–2 外侧 · 3–4 顶部 · 5–6 中间</span><div><button class="btn btn-muted" :disabled="busy||!layout" @click="resetLayout">重置</button><button class="btn btn-primary" :disabled="busy||!layout||!snapshot" @click="applyCalibration">保存标定</button></div></div>
+        <div class="modal-footer"><span>1–2 外侧 · 3–4 中间 · 5–6 顶部</span><div><button class="btn btn-muted" :disabled="busy||!layout" @click="resetLayout">重置</button><button class="btn btn-primary" :disabled="busy||!layout||!snapshot" @click="applyCalibration">保存标定</button></div></div>
       </section>
     </div>
     <div v-if="modal==='settings'&&isAdmin" class="modal-mask">

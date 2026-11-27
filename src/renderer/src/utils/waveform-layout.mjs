@@ -23,7 +23,7 @@ export function defaultLayout(width, height) {
 export function rectangles(l) {
   if (!validateLayout(l)) throw new Error('Invalid waveform calibration')
   const {center_x:c,top_y:t,split_y:s,bottom_y:b,outer_half_width:o,inner_half_width:i,top_half_width:u}=l
-  return [[c-o,s,c-i,b],[c+i,s,c+o,b],[c-u,t,c,s],[c,t,c+u,s],[c-i,s,c,b],[c,s,c+i,b]]
+  return [[c-o,s,c-i,b],[c+i,s,c+o,b],[c-i,s,c,b],[c,s,c+i,b],[c-u,t,c,s],[c,t,c+u,s]]
     .map(([x,y,x1,y1],j)=>({id:j+1,x,y,width:x1-x,height:y1-y}))
 }
 
