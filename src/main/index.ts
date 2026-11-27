@@ -256,7 +256,7 @@ async function runPackagedSmokeTest(): Promise<void> {
         const monitor = document.querySelector('.video-panel .panel-title')?.textContent?.trim()
         const controls = [...document.querySelectorAll('.heading-actions button')]
         const openVideo = controls.find(btn =>
-          btn.getAttribute('aria-label') === '打开视频' &&
+          ['打开视频','连接摄像头'].includes(btn.getAttribute('aria-label') ?? '') &&
           btn.querySelector('svg[aria-hidden="true"]') &&
           !btn.textContent?.trim())
         const gear = document.querySelector('button.algorithm-gear[aria-label="系统设置"]')
@@ -264,7 +264,7 @@ async function runPackagedSmokeTest(): Promise<void> {
         const fileInput = document.querySelector('input[type="file"]')
         // Every launch is an operator session, including when the device has
         // a previously configured administrator. Gear must not be rendered.
-        if (title !== 'ZeboVision湿法清洗检测系统' ||
+        if (title !== '注入机波形检测系统' ||
             monitor !== '检测画面' || role !== '操作员' ||
             !openVideo || gear || fileInput) {
           throw new Error('Operator-by-default monitor entry not rendered correctly')

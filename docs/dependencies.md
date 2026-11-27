@@ -68,3 +68,11 @@ pnpm build
 ## uv 如何安装？
 
 开发机无需预装 uv：由 `scripts/uv-bootstrap.mjs` 先执行 `uv self version`，缺失时自动下载官方 uv 二进制到被 Git 忽略的 `.tools/uv/`。详情见 [uv 自动引导](uv-bootstrap.md)。目标电脑只运行内置 Python，不依赖 uv。
+
+Windows 绿色包的 `scripts/verify-runtime.mjs` 根据构建清单的 `python_version` 检查对应主次版本的 CPython DLL（例如 3.13 → `python313.dll`），并以隔离模式核对实际解释器版本；指定补丁版本时也核对补丁版本。仍需通过原生扩展导入和 AVI/MP4 解码检查，不可通过复制或重命名其他版本 DLL 绕过。
+
+构建时用 `sys.base_prefix` 定位真实解释器安装，通过 Windows GetModuleFileNameW 查询已加载的 CPython DLL；保留其相对目录，记录在清单 `python_dll`。在初次复制、依赖安装后和最终资源目录三个阶段检查 DLL，缺失或大小不一致时仅从已验证的同一 uv 安装恢复。最终隔离校验必须实际加载包内对应 DLL，而不是系统 PATH 中的 DLL。若源安装缺少文件，构建会明确报错，不会从其他 Python 安装中混用 DLL。
+
+Windows 打包直接在 `build/backend` 组装独立 Python，避免在 Python 或 uv 刚退出后将整个运行时目录重命名造成 EPERM。每次构建先清除该生成目录（对短暂文件占用有限重试），复制缓存的解释器并安装正式依赖，写入清单后执行原有完整性校验。校验失败不会继续 Electron 打包。旧版本遗留的 `build/backend-staging` 不再使用；可在确认无进程占用后通过 `pnpm clean` 清除生成产物。无需清理 uv 缓存，也无需关闭系统安全软件。若目录仍被长期占用，关闭对应的开发/发行程序后重试。
+
+即使从已激活 `backend/.venv` 的终端运行 `pnpm build`，发行版也必须选取 uv 管理的基础解释器。离线查找使用 `uv python find --system --managed-python --no-project --no-python-downloads <version>`；`--system` 排除虚拟环境，保留 uv 自定义安装目录与缓存。构建仍核对 `sys.prefix` 与 `sys.base_prefix`；失败时输出实际路径供排查。不要复制开发虚拟环境或绕过校验。

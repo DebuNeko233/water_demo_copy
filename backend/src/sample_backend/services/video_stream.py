@@ -20,6 +20,7 @@ from typing import Literal
 
 from .frame_renderer import render_detection_frame, resize_display_frame
 from .roi_detector import RoiWaterDetector
+from .waveform_detection import WaveLayout, WaveSettings, WaveformDetector, render_waveform_frame
 from .station_position import STAGES, StageProfileStore, ReferencePositionRecognizer
 from .water_detection import Calibration, DemoConfig
 from .water_session import CalibrationInput, DetectorSettings, InvalidFrame, SessionExpired
@@ -63,6 +64,11 @@ class VideoOpenInput(BaseModel):
     detecting: bool = True  # Existing direct API clients keep inference on.
 
 
+class WaveVideoOpenInput(BaseModel):
+    start_time_s: float = Field(default=0.0, ge=0.0, le=86400, allow_inf_nan=False)
+    detecting: bool = False
+
+
 class VideoNextInput(BaseModel):
     session_id: str = Field(min_length=1, max_length=64)
     # File mode: infer every frame, transmit only the final display JPEG.
@@ -83,7 +89,8 @@ class PythonVideoStream:
         self._profile = profile
         self._lock = threading.RLock()
         self._cap: cv2.VideoCapture | None = None
-        self._detector: RoiWaterDetector | None = None
+        self._detector: RoiWaterDetector | WaveformDetector | None = None
+        self._live_started = 0.0
         self._detecting = True
         self._initial_calibration: Calibration | None = None
         self._id: str | None = None
@@ -156,7 +163,10 @@ class PythonVideoStream:
                 self._candidate_stage = None
                 self._candidate_count = 0
                 self._active_stage = None
-                if self._mode == 'auto':
+                if self._mode == 'waveform':
+                    assert isinstance(self._detector, WaveformDetector)
+                    self._detector.reset()
+                elif self._mode == 'auto':
                     self._detector = None
                 else:
                     assert self._initial_calibration is not None
@@ -173,9 +183,20 @@ class PythonVideoStream:
         if sid != self._id or self._cap is None:
             raise SessionExpired('Python video session expired; reopen the file')
 
-    def open(self, req: VideoOpenInput, source_settings: VideoSourceSettings | None = None) -> dict:
+    def open(self, req: VideoOpenInput | WaveVideoOpenInput,
+             source_settings: VideoSourceSettings | None = None,
+             waveform_layout: WaveLayout | None = None,
+             waveform_settings: WaveSettings | None = None) -> dict:
         settings = source_settings or VideoSourceSettings()
-        cap = open_capture(settings, req.file_path)
+        if isinstance(req, WaveVideoOpenInput):
+            if waveform_layout is None or waveform_settings is None:
+                raise InvalidFrame('请先完成六区域标定')
+            if settings.kind == 'file' and not settings.file_path:
+                raise InvalidFrame('请选择本地视频文件')
+            file_path = ''
+        else:
+            file_path = req.file_path
+        cap = open_capture(settings, file_path)
         live = settings.kind != 'file'
         try:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -188,7 +209,8 @@ class PythonVideoStream:
                 height, width = first_frame.shape[:2]
             fps = float(cap.get(cv2.CAP_PROP_FPS))
             frame_count = max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
-            cal = req.calibration
+            cal = waveform_layout if isinstance(req, WaveVideoOpenInput) else req.calibration
+            assert cal is not None
             if width <= 0 or height <= 0:
                 raise InvalidFrame('无法读取视频分辨率')
             if width * height > MAX_FRAME_PIXELS:
@@ -202,13 +224,13 @@ class PythonVideoStream:
                     raise InvalidFrame('Unable to determine source video FPS')
             # API route resolves the approved, persistent settings; direct
             # callers without an override use original DemoConfig defaults.
-            approved = req.detector or DetectorSettings()
+            approved = (req.detector or DetectorSettings()) if isinstance(req, VideoOpenInput) else DetectorSettings()
             cfg = DemoConfig(**approved.model_dump(exclude={'station_match_threshold'}))
             stage_profile = None
             recognizer = None
-            mode = req.stage_mode
+            mode = req.stage_mode if isinstance(req, VideoOpenInput) else 'waveform'
             fixed_stage = 'P1'
-            if req.stage_mode in ('auto', 'configured'):
+            if isinstance(req, VideoOpenInput) and req.stage_mode in ('auto', 'configured'):
                 if self._profile is None:
                     raise InvalidFrame('工位配置尚未初始化')
                 stage_profile, recognizer = self._profile.build(width, height)
@@ -222,13 +244,19 @@ class PythonVideoStream:
                 mode = 'auto' if recognizer is not None else 'single'
                 if recognizer is not None:
                     recognizer.threshold = approved.station_match_threshold
-            detector = RoiWaterDetector((height, width), fps,
-                                     Calibration(cal.cx, cal.cy, cal.radius), cfg)
+            if isinstance(req, WaveVideoOpenInput):
+                assert isinstance(cal, WaveLayout)
+                detector = WaveformDetector(cal, waveform_settings)
+                initial_calibration = None
+            else:
+                assert isinstance(cal, CalibrationInput)
+                initial_calibration = Calibration(cal.cx, cal.cy, cal.radius)
+                detector = RoiWaterDetector((height, width), fps, initial_calibration, cfg)
             with self._lock:
                 self._close()
                 self._cap = cap
                 self._detector = detector
-                self._initial_calibration = Calibration(cal.cx, cal.cy, cal.radius)
+                self._initial_calibration = initial_calibration
                 self._detecting = req.detecting
                 self._id = uuid4().hex
                 self._width, self._height = width, height
@@ -237,6 +265,7 @@ class PythonVideoStream:
                 self._duration = frame_count / fps if frame_count and not live else 0.0
                 self._frame_count = frame_count if not live else 0
                 self._source_kind = settings.kind
+                self._live_started = time.monotonic()
                 self._probe_frame = first_frame
                 self._live_stop = False
                 self._live_error = ''
@@ -306,10 +335,13 @@ class PythonVideoStream:
         self._candidate_stage = None
         self._candidate_count = 0
         self._active_stage = None
-        if self._mode == 'auto':
+        if self._mode == 'waveform':
+            assert isinstance(self._detector, WaveformDetector)
+            self._detector.reset()
+        elif self._mode == 'auto':
             self._detector = None
         else:
-            assert self._detector is not None
+            assert isinstance(self._detector, RoiWaterDetector)
             old = self._detector
             self._detector = RoiWaterDetector((self._height, self._width), self._fps,
                                            old.calib, self._config)
@@ -480,8 +512,11 @@ class PythonVideoStream:
 
     @staticmethod
     def _encode_preview(frame, detector, data: dict | None) -> str:
-        preview = (resize_display_frame(frame) if data is None
-                   else render_detection_frame(frame, detector, data))
+        if isinstance(detector, WaveformDetector) and data is not None:
+            preview = resize_display_frame(render_waveform_frame(frame, detector.layout, data))
+        else:
+            preview = (resize_display_frame(frame) if data is None
+                       else render_detection_frame(frame, detector, data))
         ok_jpeg, encoded = cv2.imencode('.jpg', preview,
                                         [cv2.IMWRITE_JPEG_QUALITY, 76])
         if not ok_jpeg:
@@ -504,6 +539,10 @@ class PythonVideoStream:
         index = self._next_index
         self._next_index += 1
         t = index / self._fps
+        if self._mode == 'waveform':
+            if self._source_kind != 'file':
+                t = time.monotonic() - self._live_started
+            return self._waveform_packet(frame, t, index, started, decoded_at, with_preview)
         # The recognizer never edits the frame. The canonical WaterDetector
         # still processes the original full-FPS decoded BGR image.
         stage, confidence, scores, reason = (self._fixed_stage, 1.0, {}, '')
@@ -555,4 +594,39 @@ class PythonVideoStream:
             packet['jpeg_base64'] = self._encode_preview(frame, self._detector, data)
             packet['performance']['preview_ms'] = round(
                 (time.perf_counter() - analyzed_at) * 1000, 2)
+        return packet
+
+    def _waveform_packet(self, frame, t, index, started, decoded_at, with_preview):
+        """Use the same capture, backpressure and JPEG transport for six-ROI inference."""
+        data = None
+        if self._detecting:
+            assert isinstance(self._detector, WaveformDetector)
+            try:
+                data = self._detector.process(frame, t)
+            except ValueError as exc:
+                raise InvalidFrame(str(exc)) from exc
+            self._history.append({'time_s': t, 'entropy': data['entropy'],
+                                  'symmetry': data['symmetry']})
+            while self._history and self._history[0]['time_s'] < t - 5.0:
+                self._history.popleft()
+        self._live_overlay_result = data
+        result = (dict(data) if data is not None else {
+            'status': 'PAUSED', 'reason': 'DETECTION_STOPPED', 'time_s': t,
+            'entropy': [None]*6, 'symmetry': [None]*3, 'pixel_counts': [0]*6,
+            'invalid_regions': [], 'bad_regions': [], 'bad_pairs': [],
+            'abnormal_run_s': 0.0,
+        })
+        result.update(session_id=self._id, frame_index=index,
+                      history_ready=result['status'] not in ('WARMUP', 'UNKNOWN', 'PAUSED'),
+                      history=list(self._history))
+        analyzed = time.perf_counter()
+        packet = {'ended': False, 'frame_index': index, 'time_s': t,
+                  'result': result, 'detecting': self._detecting,
+                  'performance': {'frames': 1,
+                                  'decode_ms': round((decoded_at-started)*1000, 2),
+                                  'analysis_ms': round((analyzed-decoded_at)*1000, 2),
+                                  'preview_ms': 0.0}}
+        if with_preview:
+            packet['jpeg_base64'] = self._encode_preview(frame, self._detector, data)
+            packet['performance']['preview_ms'] = round((time.perf_counter()-analyzed)*1000, 2)
         return packet

@@ -1,6 +1,6 @@
 /** Validate a redistributable Windows CPython runtime, not merely python.exe.
  *
- * Called once on the staging copy and again against the actual packaged
+ * Called once on the prepared build copy and again against the actual packaged
  * Electron resources. Uses isolated Python, a restricted PATH, native-module
  * imports, and real OpenCV AVI/MP4 video read/write on the copied interpreter.
  */
@@ -8,6 +8,8 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { parseRuntimeVersion } from './lib/runtime-version.mjs'
+import { containedRelative, loadedDllPython } from './lib/runtime-copy.mjs'
 
 if (process.platform !== 'win32') {
   throw new Error('The bundled Python runtime validator is Windows-only')
@@ -23,20 +25,39 @@ const relative = path.relative(root, executable)
 assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative),
   'Manifest points outside the bundled backend')
 const runtime = path.dirname(executable)
+// The build manifest records the requested version from backend/.python-version.
+// Never accept an unrelated DLL simply because it is present in the copied directory.
+const version = parseRuntimeVersion(manifest.python_version)
+const dll = manifest.python_dll === undefined
+  ? path.join(runtime, version.dll)
+  : path.resolve(root, manifest.python_dll)
+containedRelative(runtime, dll)
+assert.equal(path.basename(dll).toLowerCase(), version.dll, 'Unexpected CPython DLL in manifest')
 for (const item of [
   executable,
-  path.join(runtime, 'python312.dll'),
+  dll,
   path.join(runtime, 'Lib', 'encodings', '__init__.py'),
   path.join(runtime, 'Lib', 'site-packages'),
 ]) {
   assert.ok(fs.existsSync(item), 'Incomplete Python distribution: ' + item)
 }
 
-const verification = `
+const verification = loadedDllPython + `
 import os, sys, json, importlib, pathlib, tempfile
+expected = tuple(int(part) for part in sys.argv[1].split('.'))
+actual = tuple(sys.version_info[:len(expected)])
+assert actual == expected, (
+    "Python version mismatch: expected " + sys.argv[1] +
+    ", actual " + sys.version.split()[0]
+)
 base = pathlib.Path(sys.executable).resolve().parent
 prefix = pathlib.Path(sys.prefix).resolve()
 assert prefix == base, "Python prefix escaped packaged runtime: " + str(prefix)
+loaded = pathlib.Path(loaded_python_dll()).resolve()
+expected_dll = pathlib.Path(sys.argv[2]).resolve()
+assert loaded == expected_dll and loaded.is_relative_to(base), (
+    "Python loaded an unexpected or external DLL: " + str(loaded)
+)
 modules = (
     'encodings', 'ctypes', '_ssl', '_sqlite3', 'ssl', 'bz2', 'lzma',
     'numpy', 'cv2', 'pydantic_core', 'fastapi', 'uvicorn', 'loguru',
@@ -86,7 +107,7 @@ delete env.UV_PROJECT_ENVIRONMENT
 // PATH. Standard Windows system DLLs remain accessible.
 const windowsDir = process.env.SystemRoot || 'C:\\Windows'
 env.PATH = [runtime, path.join(windowsDir, 'System32'), windowsDir].join(';')
-const result = spawnSync(executable, ['-I', '-c', verification], {
+const result = spawnSync(executable, ['-I', '-c', verification, version.requested, dll], {
   cwd: runtime,
   env,
   encoding: 'utf8',

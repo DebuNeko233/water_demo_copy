@@ -45,20 +45,25 @@ test('normal monitor UI omits redundant prose while preserving useful controls',
 })
 
 
-test('monitor video action is icon-only, accessible, and maintains live reconnect affordance', () => {
-  const heading = app.match(/<div class="heading-actions">[\s\S]*?<\/div>/)?.[0]
+test('active waveform monitor video action is icon-only, accessible, and supports live reconnect', () => {
+  const entry = readFileSync(path.join(root, 'src/renderer/src/main.ts'), 'utf8')
+  assert.match(entry, /import App from '\.\/WaveformMonitor\.vue'/)
+  const monitor = readFileSync(path.join(root, 'src/renderer/src/WaveformMonitor.vue'), 'utf8')
+  const heading = monitor.match(/<div class="heading-actions">[\s\S]*?<\/div>/)?.[0]
   assert.ok(heading)
-  const button = heading.match(/<button type="button" class="btn btn-muted video-open-icon"[\s\S]*?<\/button>/)?.[0]
-  assert.ok(button)
-  assert.match(button, /:title="isLiveVideo \? '重新连接' : '打开视频'"/)
-  assert.match(button, /:aria-label="isLiveVideo \? '重新连接' : '打开视频'"/)
-  assert.match(button, /@click="chooseVideo"/)
-  assert.match(button, /<svg v-if="isLiveVideo"/)
-  assert.match(button, /<svg v-else/)
-  assert.doesNotMatch(button, />\s*\{\{\s*isLiveVideo/)
+  const button = heading.match(/<button[^>]*class="btn btn-muted video-open-icon"[\s\S]*?<\/button>/)?.[0]
+  assert.ok(button, 'The active monitor must expose the video action')
+  assert.match(button, /:title="source\.kind\s*===\s*'file'\s*\?\s*'打开视频'\s*:\s*'连接摄像头'"/)
+  assert.match(button, /:aria-label="source\.kind\s*===\s*'file'\s*\?\s*'打开视频'\s*:\s*'连接摄像头'"/)
+  assert.match(button, /@click="openVideo\(\)"/)
+  assert.match(button, /<svg v-if="source\.kind\s*===\s*'file'"[^>]*aria-hidden="true"/)
+  assert.match(button, /<svg v-else[^>]*aria-hidden="true"/)
+  assert.equal(button.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]*>/g, '').trim(), '')
   const smoke = readFileSync(path.join(root, 'src/main/index.ts'), 'utf8')
-  assert.match(smoke, /btn\.getAttribute\('aria-label'\) === '打开视频'/)
-  assert.doesNotMatch(smoke, /btn\.textContent\?\.trim\(\) === '打开视频'/)
+  assert.match(smoke, /\[\s*'打开视频'\s*,\s*'连接摄像头'\s*\]\.includes\(btn\.getAttribute\('aria-label'\)\s*\?\?\s*''\)/)
+  assert.match(smoke, /btn\.querySelector\('svg\[aria-hidden="true"\]'\)/)
+  assert.match(smoke, /!btn\.textContent\?\.trim\(\)/)
+  assert.doesNotMatch(smoke, /btn\.textContent\?\.trim\(\)\s*===\s*'打开视频'/)
 })
 
 test('monitor four data cells scale typography while retaining the responsive grid', () => {
